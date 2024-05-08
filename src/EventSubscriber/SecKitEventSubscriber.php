@@ -87,11 +87,6 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
   public function onKernelResponse(ResponseEvent $event) {
     $this->response = $event->getResponse();
 
-    // Override the default behaviour by checking the paths
-    // defined in the ignore list
-    // if ($this->config->get('seckit_various.csp_ignore_paths')) {
-    //   $this->seckitCspIgnorePaths();
-    // }
     // Execute necessary functions.
     if ($this->config->get('seckit_xss.csp.checkbox')) {
       $this->seckitCsp();
