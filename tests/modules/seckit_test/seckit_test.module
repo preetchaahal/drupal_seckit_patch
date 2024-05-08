@@ -1,0 +1,25 @@
+<?php
+
+/**
+ * @file
+ * Contains main module functions.
+ */
+
+declare(strict_types=1);
+
+use Drupal\seckit\Nonce;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Render\Markup;
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function seckit_test_form_seckit_settings_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
+  $form['test_script'] = [
+    '#type' => 'html_tag',
+    '#weight' => 50,
+    '#tag' => 'script',
+    '#attributes' => ['id' => 'testScript'],
+    '#value' => Markup::create('console.log("👋");'),
+  ];
+}

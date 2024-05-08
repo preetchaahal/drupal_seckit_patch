@@ -1,0 +1,6 @@
+name: Security kit test
+description: 'Provides test functionality for the seckit module'
+core_version_requirement: ^9.3 || ^10
+type: module
+dependencies:
+  - seckit:seckit
