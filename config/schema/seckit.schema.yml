@@ -177,3 +177,6 @@ seckit.settings:
         disable_autocomplete:
           type: boolean
           label: 'Disable autocomplete'
+        csp_ignore_paths:
+          type: string
+          label: 'Paths to ignore'

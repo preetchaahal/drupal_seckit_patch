@@ -731,6 +731,15 @@ class SecKitSettingsForm extends ConfigFormBase {
       '#description' => $this->t('Prevent the browser from populating login/registration form fields using its autocomplete functionality. This as populated fields may contain sensitive information, facilitating unauthorized access.'),
     ];
 
+    // Ignore csp paths.
+    $form['seckit_various']['csp_ignore_paths'] = [
+      '#type' => 'textarea',
+      '#maxlength' => 1024,
+      '#default_value' => $config->get('seckit_various.csp_ignore_paths'),
+      '#title' => 'Ignore paths',
+      '#description' => $this->t("Specify csp ignore paths"),
+    ];
+
     return parent::buildForm($form, $form_state);
   }
 

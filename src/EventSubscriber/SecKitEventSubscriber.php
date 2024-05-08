@@ -87,6 +87,11 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
   public function onKernelResponse(ResponseEvent $event) {
     $this->response = $event->getResponse();
 
+    // Override the default behaviour by checking the paths
+    // defined in the ignore list
+    // if ($this->config->get('seckit_various.csp_ignore_paths')) {
+    //   $this->seckitCspIgnorePaths();
+    // }
     // Execute necessary functions.
     if ($this->config->get('seckit_xss.csp.checkbox')) {
       $this->seckitCsp();
@@ -214,6 +219,7 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
     $csp_report_uri = $this->config->get('seckit_xss.csp.report-uri');
     $csp_upgrade_req = $this->config->get('seckit_xss.csp.upgrade-req');
     $add_nonce = $this->config->get('seckit_xss.csp.nonce');
+    $csp_ignore_paths = $this->config->get('seckit_various.csp_ignore_paths');
     // $csp_policy_uri = $this->config->get('seckit_xss.csp.policy-uri');
     // Prepare directives.
     $directives = [];
@@ -278,8 +284,26 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
     // Merge directives.
     $directives = implode('; ', $directives);
     // }
+    
     // send HTTP response header if directives were prepared.
     if ($directives) {
+      
+      // Check if current CSP directives shall be ignored for current URL
+      $ignore_csp_for_current_url = FALSE;
+      if (!empty($csp_ignore_paths)) {
+        $csp_ignore_paths = explode('\n', $csp_ignore_paths);
+        $current_url = \Drupal::request()->getRequestUri();
+        
+        foreach($csp_ignore_paths as $csp_ignore_path) {
+          if (str_contains($current_url, preg_replace("/\*$/", "", $csp_ignore_path,))){
+            $ignore_csp_for_current_url = TRUE;
+          }
+        }
+      }
+      if ($ignore_csp_for_current_url) {
+        return;
+      }
+
       if ($csp_report_only) {
         // Use report-only mode.
         $this->response->headers->set('Content-Security-Policy-Report-Only', $directives);
@@ -291,13 +315,15 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
         }
       }
       else {
-        $this->response->headers->set('Content-Security-Policy', $directives);
-        if ($csp_vendor_prefix_x) {
-          $this->response->headers->set('X-Content-Security-Policy', $directives);
-        }
-        if ($csp_vendor_prefix_webkit) {
-          $this->response->headers->set('X-WebKit-CSP', $directives);
-        }
+        // Only apply the CSP directives if the current url is not in the ignore list
+        
+          $this->response->headers->set('Content-Security-Policy', $directives);
+          if ($csp_vendor_prefix_x) {
+            $this->response->headers->set('X-Content-Security-Policy', $directives);
+          }
+          if ($csp_vendor_prefix_webkit) {
+            $this->response->headers->set('X-WebKit-CSP', $directives);
+          }
       }
     }
   }
