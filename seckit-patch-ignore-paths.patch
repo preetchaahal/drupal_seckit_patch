@@ -1,0 +1,159 @@
+From c8b39664cf869d7e531e9299dbc0610ec709a2c8 Mon Sep 17 00:00:00 2001
+From: preetchaahal <gurpreet.24.chahal@gmail.com>
+Date: Wed, 8 May 2024 16:03:12 -0400
+Subject: [PATCH 1/2] Seckit patched to include an option to ignore CSP
+ directives for selected paths
+
+---
+ config/install/seckit.settings.yml            |  1 +
+ config/schema/seckit.schema.yml               |  3 ++
+ src/EventSubscriber/SecKitEventSubscriber.php | 40 +++++++++++++++----
+ src/Form/SecKitSettingsForm.php               |  9 +++++
+ 4 files changed, 46 insertions(+), 7 deletions(-)
+
+diff --git a/config/install/seckit.settings.yml b/config/install/seckit.settings.yml
+index 89278fb..145e6b7 100644
+--- a/config/install/seckit.settings.yml
++++ b/config/install/seckit.settings.yml
+@@ -52,3 +52,4 @@ seckit_various:
+   referrer_policy: FALSE
+   referrer_policy_policy: 'no-referrer-when-downgrade'
+   disable_autocomplete: FALSE
++  csp_ignore_paths: ''
+diff --git a/config/schema/seckit.schema.yml b/config/schema/seckit.schema.yml
+index a51f216..5e2b070 100644
+--- a/config/schema/seckit.schema.yml
++++ b/config/schema/seckit.schema.yml
+@@ -177,3 +177,6 @@ seckit.settings:
+         disable_autocomplete:
+           type: boolean
+           label: 'Disable autocomplete'
++        csp_ignore_paths:
++          type: string
++          label: 'Paths to ignore'
+diff --git a/src/EventSubscriber/SecKitEventSubscriber.php b/src/EventSubscriber/SecKitEventSubscriber.php
+index 72ef923..b858587 100644
+--- a/src/EventSubscriber/SecKitEventSubscriber.php
++++ b/src/EventSubscriber/SecKitEventSubscriber.php
+@@ -87,6 +87,11 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
+   public function onKernelResponse(ResponseEvent $event) {
+     $this->response = $event->getResponse();
+ 
++    // Override the default behaviour by checking the paths
++    // defined in the ignore list
++    // if ($this->config->get('seckit_various.csp_ignore_paths')) {
++    //   $this->seckitCspIgnorePaths();
++    // }
+     // Execute necessary functions.
+     if ($this->config->get('seckit_xss.csp.checkbox')) {
+       $this->seckitCsp();
+@@ -214,6 +219,7 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
+     $csp_report_uri = $this->config->get('seckit_xss.csp.report-uri');
+     $csp_upgrade_req = $this->config->get('seckit_xss.csp.upgrade-req');
+     $add_nonce = $this->config->get('seckit_xss.csp.nonce');
++    $csp_ignore_paths = $this->config->get('seckit_various.csp_ignore_paths');
+     // $csp_policy_uri = $this->config->get('seckit_xss.csp.policy-uri');
+     // Prepare directives.
+     $directives = [];
+@@ -278,8 +284,26 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
+     // Merge directives.
+     $directives = implode('; ', $directives);
+     // }
++    
+     // send HTTP response header if directives were prepared.
+     if ($directives) {
++      
++      // Check if current CSP directives shall be ignored for current URL
++      $ignore_csp_for_current_url = FALSE;
++      if (!empty($csp_ignore_paths)) {
++        $csp_ignore_paths = explode('\n', $csp_ignore_paths);
++        $current_url = \Drupal::request()->getRequestUri();
++        
++        foreach($csp_ignore_paths as $csp_ignore_path) {
++          if (str_contains($current_url, preg_replace("/\*$/", "", $csp_ignore_path,))){
++            $ignore_csp_for_current_url = TRUE;
++          }
++        }
++      }
++      if ($ignore_csp_for_current_url) {
++        return;
++      }
++
+       if ($csp_report_only) {
+         // Use report-only mode.
+         $this->response->headers->set('Content-Security-Policy-Report-Only', $directives);
+@@ -291,13 +315,15 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
+         }
+       }
+       else {
+-        $this->response->headers->set('Content-Security-Policy', $directives);
+-        if ($csp_vendor_prefix_x) {
+-          $this->response->headers->set('X-Content-Security-Policy', $directives);
+-        }
+-        if ($csp_vendor_prefix_webkit) {
+-          $this->response->headers->set('X-WebKit-CSP', $directives);
+-        }
++        // Only apply the CSP directives if the current url is not in the ignore list
++        
++          $this->response->headers->set('Content-Security-Policy', $directives);
++          if ($csp_vendor_prefix_x) {
++            $this->response->headers->set('X-Content-Security-Policy', $directives);
++          }
++          if ($csp_vendor_prefix_webkit) {
++            $this->response->headers->set('X-WebKit-CSP', $directives);
++          }
+       }
+     }
+   }
+diff --git a/src/Form/SecKitSettingsForm.php b/src/Form/SecKitSettingsForm.php
+index cda4f02..22e737f 100644
+--- a/src/Form/SecKitSettingsForm.php
++++ b/src/Form/SecKitSettingsForm.php
+@@ -731,6 +731,15 @@ class SecKitSettingsForm extends ConfigFormBase {
+       '#description' => $this->t('Prevent the browser from populating login/registration form fields using its autocomplete functionality. This as populated fields may contain sensitive information, facilitating unauthorized access.'),
+     ];
+ 
++    // Ignore csp paths.
++    $form['seckit_various']['csp_ignore_paths'] = [
++      '#type' => 'textarea',
++      '#maxlength' => 1024,
++      '#default_value' => $config->get('seckit_various.csp_ignore_paths'),
++      '#title' => 'Ignore paths',
++      '#description' => $this->t("Specify csp ignore paths"),
++    ];
++
+     return parent::buildForm($form, $form_state);
+   }
+ 
+-- 
+2.39.2
+
+
+From 65a7ef853da2abad7e4acddfb260b435c3b7302c Mon Sep 17 00:00:00 2001
+From: preetchaahal <gurpreet.24.chahal@gmail.com>
+Date: Wed, 8 May 2024 16:05:04 -0400
+Subject: [PATCH 2/2] Code clean-up
+
+---
+ src/EventSubscriber/SecKitEventSubscriber.php | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/src/EventSubscriber/SecKitEventSubscriber.php b/src/EventSubscriber/SecKitEventSubscriber.php
+index b858587..80710bf 100644
+--- a/src/EventSubscriber/SecKitEventSubscriber.php
++++ b/src/EventSubscriber/SecKitEventSubscriber.php
+@@ -87,11 +87,6 @@ class SecKitEventSubscriber implements EventSubscriberInterface {
+   public function onKernelResponse(ResponseEvent $event) {
+     $this->response = $event->getResponse();
+ 
+-    // Override the default behaviour by checking the paths
+-    // defined in the ignore list
+-    // if ($this->config->get('seckit_various.csp_ignore_paths')) {
+-    //   $this->seckitCspIgnorePaths();
+-    // }
+     // Execute necessary functions.
+     if ($this->config->get('seckit_xss.csp.checkbox')) {
+       $this->seckitCsp();
+-- 
+2.39.2
+
